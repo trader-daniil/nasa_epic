@@ -46,14 +46,14 @@ def getting_image_info(token, url, folder_name):
 
 def main():
     load_dotenv()
-    auth_token = os.environ['AUTH_TOKEN']
+    AUTH_TOKEN = os.environ['AUTH_TOKEN']
     parser = argparse.ArgumentParser(
         description='Программа скачивает изображения',
     )
     parser.add_argument('url', help='ссылка на изображения')
     args = parser.parse_args()
     try:
-        getting_image_info(auth_token, args.url, 'epics')
+        getting_image_info(AUTH_TOKEN, args.url, 'epics')
         print('Фотографии загружены в папку')
     except requests.exceptions.HTTPError:
         print('Проверьте введенную вами ссылку')
