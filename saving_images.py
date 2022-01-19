@@ -39,7 +39,7 @@ def getting_image_info(token, url, folder_name):
         'api_key': token,
     }
     response = requests.get(url, params)
-    for image in response.json():
+    for image in response.json()[:1]:
         image_info = parsing_image_info(image)
         downloading_epic_image(token, image_info, folder_name)
 
