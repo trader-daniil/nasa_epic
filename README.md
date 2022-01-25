@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 `BOT_TOKEN=ваш_токен`
 
-Нужно указать чат, в который бот будет сбрасывать снимки, если у вас нету чата, то создайте по [инструкции](https://smmplanner.com/blog/otlozhennyj-posting-v-telegram/). Затем скопируйте ID чата и создайте переменную коружения в формате
+Нужно указать чат, в который бот будет сбрасывать снимки, если у вас нет чата, то создайте по [инструкции](https://smmplanner.com/blog/otlozhennyj-posting-v-telegram/). Затем скопируйте ID чата и создайте переменную окружения в формате
 
 `CHAT_ID=@ваш_канал`
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 Сервис запускается из терминала командой 
 
 ```
-python savin_images.py
+python saving_images.py
 ```
 
 ### Цель проекта
