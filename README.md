@@ -34,9 +34,9 @@ pip install -r requirements.txt
 
 Сервис запускается из терминала командой 
 
-```
-python savin_images.py
-```
+
+```python savin_images.py```
+
 
 ### Цель проекта
 
