@@ -10,73 +10,72 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-
-def check_if_image(file_path):
-    return (path.isfile(file_path) and imghdr.what(file_path)
-            and int(os.path.getsize(file_path)) < 20971520)
+MAX_IMAGE_SIZE = 20971520
 
 
-def download_epic_image(token, image_info, folder):
+def is_image_appropriate(file_path):
+    is_image_size_appropriate = os.path.getsize(file_path) < MAX_IMAGE_SIZE
+    is_file = path.isfile(file_path)
+    is_image = imghdr.what(file_path)
+    return is_file and is_image and is_image_size_appropriate
+
+
+def download_epic_images(nasa_token, image_date,
+                         image_name, folder_with_images):
     params = {
-        'api_key':  token,
+        'api_key':  nasa_token,
     }
-    image_date = image_info['image_date']
-    image_name = image_info['image_name']
     image_url = ('https://api.nasa.gov/EPIC/archive/natural/'
                  f'{image_date}/png/{image_name}.png')
     response = requests.get(image_url,
                             params=params)
     response.raise_for_status()
-    Path(folder).mkdir(parents=True, exist_ok=True)
-    image = f'{folder}/{image_name}.png'
+    Path(folder_with_images).mkdir(parents=True, exist_ok=True)
+    image = f'{folder_with_images}/{image_name}.png'
     with open(image, 'wb') as file:
         file.write(response.content)
 
 
-def send_images(images_path):
-    load_dotenv()
-    BOT_TOKEN = os.environ['BOT_TOKEN']
-    CHAT_ID = os.environ['CHAT_ID']
-    SENDING_PERIOD = os.environ.get('SENDING_PERIOD', '86400')
-    bot = telegram.Bot(token=BOT_TOKEN)
+def send_images(images_path, bot_token, chat_id, sending_period):
+    bot = telegram.Bot(token=bot_token)
     bot.get_updates()
-    files_in_dir = listdir(images_path)
-    for file in files_in_dir:
-        el_path = path.join(images_path, file)
-        if check_if_image(el_path):
-            with open(el_path, 'rb') as image:
-                bot.send_photo(chat_id=CHAT_ID, photo=image)
-            time.sleep(int(SENDING_PERIOD))
+    images_in_dir = listdir(images_path)
+    for image in images_in_dir:
+        full_image_path = path.join(images_path, image)
+        if is_image_appropriate(full_image_path):
+            with open(full_image_path, 'rb') as image:
+                bot.send_photo(chat_id=chat_id, photo=image)
+            time.sleep(int(sending_period))
 
 
-def parse_image_info(epic):
-    image_date = datetime.date.fromisoformat(epic['date'][:10])
-    image_date = image_date.strftime("%Y/%m/%d")
-    image_name = epic['image']
+def parse_image_info(image_date, image_name):
+    image_date_format = '%Y-%m-%d %H:%M:%S'
+    fetched_date = datetime.datetime.strptime(image_date, image_date_format)
+    image_date = fetched_date.strftime("%Y/%m/%d")
     image_info = {'image_date': image_date,
                   'image_name': image_name,
                   }
     return image_info
 
 
-def get_image_info(token, url, folder_name):
+def get_images_info(token, url):
     params = {
         'api_key': token,
     }
     response = requests.get(url, params)
+    images = []
     for image in response.json()[:2]:
-        image_info = parse_image_info(image)
-        download_epic_image(token, image_info, folder_name)
+        image_info = parse_image_info(image['date'], image['image'])
+        images.append(image_info)
+    return images
 
 
-def download_spacex_images(links, images_path):
-    load_dotenv()
-    SPACEX_IMAGES_AMOUNT = int(os.environ.get('SPACEX_IMAGES_AMOUNT', '2'))
+def download_spacex_images(links, images_path, images_amount):
     Path(images_path).mkdir(parents=True, exist_ok=True)
-    for num, link in enumerate(links[:SPACEX_IMAGES_AMOUNT]):
+    for num, link in enumerate(links[:images_amount]):
         response = requests.get(link)
         response.raise_for_status()
-        image_path = f'{images_path}/spacex{str(num)}.jpg'
+        image_path = f'{images_path}/spacex{num}.jpg'
         with open(image_path, 'wb') as file:
             file.write(response.content)
 
@@ -84,9 +83,9 @@ def download_spacex_images(links, images_path):
 def fetch_spacex_last_launch():
     response = requests.get('https://api.spacexdata.com/v3/launches/past')
     response.raise_for_status()
-    images_list = [link for flight in response.json()
-                   for link in flight['links']['flickr_images']]
-    return images_list
+    images = [link for flight in response.json()
+              for link in flight['links']['flickr_images']]
+    return images
 
 
 def save_nasa_apod(images_url, image_path):
@@ -112,24 +111,34 @@ def get_apod_images(token, amount):
 
 
 def get_extension(url):
-    o = urlparse(url)
-    filename, file_extension = os.path.splitext(o.path)
+    image_url = urlparse(url)
+    filename, file_extension = os.path.splitext(image_url.path)
     return file_extension
 
 
 def main():
-    load_dotenv()
-    AUTH_TOKEN = os.environ['AUTH_TOKEN']
-    NASA_IMAGES_AMOUNT = int(os.environ.get('NASA_IMAGES_AMOUNT', '3'))
     nasa_url = 'https://api.nasa.gov/EPIC/api/natural/images'
     photos_path = 'space_photos'
+    load_dotenv()
+    NASA_TOKEN = os.environ['NASA_TOKEN']
+    NASA_IMAGES_AMOUNT = int(os.environ.get('NASA_IMAGES_AMOUNT', '3'))
     try:
-        nasa_images = get_apod_images(AUTH_TOKEN, NASA_IMAGES_AMOUNT)
+        nasa_images = get_apod_images(NASA_TOKEN, NASA_IMAGES_AMOUNT)
         save_nasa_apod(nasa_images, photos_path)
         spacex_last_launch_photos = fetch_spacex_last_launch()
-        download_spacex_images(spacex_last_launch_photos, photos_path)
-        get_image_info(AUTH_TOKEN, nasa_url, photos_path)
-        send_images(photos_path)
+        SPACEX_IMAGES_AMOUNT = int(os.environ.get('SPACEX_IMAGES_AMOUNT', '2'))
+        download_spacex_images(spacex_last_launch_photos,
+                               photos_path, SPACEX_IMAGES_AMOUNT)
+        images = get_images_info(NASA_TOKEN, nasa_url)
+        for image in images:
+            image_date = image['image_date']
+            image_name = image['image_name']
+            download_epic_images(NASA_TOKEN, image_date,
+                                 image_name, photos_path)
+        BOT_TOKEN = os.environ['BOT_TOKEN']
+        CHAT_ID = os.environ['CHAT_ID']
+        SENDING_PERIOD = os.environ.get('SENDING_PERIOD', '86400')
+        send_images(photos_path, BOT_TOKEN, CHAT_ID, SENDING_PERIOD)
         print('Фотографии отправлены в канал')
     except requests.exceptions.HTTPError:
         print('Проверьте введенную вами ссылку')
