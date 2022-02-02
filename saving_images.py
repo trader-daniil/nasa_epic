@@ -20,23 +20,25 @@ def is_image_appropriate(file_path):
     return is_file and is_image and is_image_size_appropriate
 
 
-def download_epic_images(nasa_token, image_date,
-                         image_name, folder_with_images):
+def download_epic_images(nasa_token, images, folder_with_images):
     params = {
         'api_key':  nasa_token,
     }
-    image_url = ('https://api.nasa.gov/EPIC/archive/natural/'
-                 f'{image_date}/png/{image_name}.png')
-    response = requests.get(image_url,
-                            params=params)
-    response.raise_for_status()
-    Path(folder_with_images).mkdir(parents=True, exist_ok=True)
-    image = f'{folder_with_images}/{image_name}.png'
-    with open(image, 'wb') as file:
-        file.write(response.content)
+    for image in images:
+        image_name = image['image_name']
+        image_date = image['image_date']
+        image_url = ('https://api.nasa.gov/EPIC/archive/natural/'
+                     f'{image_date}/png/{image_name}.png')
+        response = requests.get(image_url,
+                                params=params)
+        response.raise_for_status()
+        Path(folder_with_images).mkdir(parents=True, exist_ok=True)
+        image = f'{folder_with_images}/{image_name}.png'
+        with open(image, 'wb') as file:
+            file.write(response.content)
 
 
-def send_images(images_path, bot_token, chat_id, sending_period):
+def send_images_on_tgchat(images_path, bot_token, chat_id, sending_period):
     bot = telegram.Bot(token=bot_token)
     bot.get_updates()
     images_in_dir = listdir(images_path)
@@ -58,11 +60,12 @@ def parse_image_info(image_date, image_name):
     return image_info
 
 
-def get_images_info(token, url):
+def get_nasa_images_info(token):
+    nasa_url = 'https://api.nasa.gov/EPIC/api/natural/images'
     params = {
         'api_key': token,
     }
-    response = requests.get(url, params)
+    response = requests.get(nasa_url, params)
     images = []
     for image in response.json()[:2]:
         image_info = parse_image_info(image['date'], image['image'])
@@ -117,28 +120,24 @@ def get_extension(url):
 
 
 def main():
-    nasa_url = 'https://api.nasa.gov/EPIC/api/natural/images'
     photos_path = 'space_photos'
     load_dotenv()
-    NASA_TOKEN = os.environ['NASA_TOKEN']
-    NASA_IMAGES_AMOUNT = int(os.environ.get('NASA_IMAGES_AMOUNT', '3'))
+    nasa_token = os.environ['NASA_TOKEN']
+    nasa_images_amount = int(os.environ.get('NASA_IMAGES_AMOUNT', '3'))
     try:
-        nasa_images = get_apod_images(NASA_TOKEN, NASA_IMAGES_AMOUNT)
+        nasa_images = get_apod_images(nasa_token, nasa_images_amount)
         save_nasa_apod(nasa_images, photos_path)
         spacex_last_launch_photos = fetch_spacex_last_launch()
-        SPACEX_IMAGES_AMOUNT = int(os.environ.get('SPACEX_IMAGES_AMOUNT', '2'))
+        spacex_images_amount = int(os.environ.get('SPACEX_IMAGES_AMOUNT', '2'))
         download_spacex_images(spacex_last_launch_photos,
-                               photos_path, SPACEX_IMAGES_AMOUNT)
-        images = get_images_info(NASA_TOKEN, nasa_url)
-        for image in images:
-            image_date = image['image_date']
-            image_name = image['image_name']
-            download_epic_images(NASA_TOKEN, image_date,
-                                 image_name, photos_path)
-        BOT_TOKEN = os.environ['BOT_TOKEN']
-        CHAT_ID = os.environ['CHAT_ID']
-        SENDING_PERIOD = os.environ.get('SENDING_PERIOD', '86400')
-        send_images(photos_path, BOT_TOKEN, CHAT_ID, SENDING_PERIOD)
+                               photos_path, spacex_images_amount)
+        images = get_nasa_images_info(nasa_token)
+        download_epic_images(nasa_token, images, photos_path)
+        tg_bot_token = os.environ['TELEGRAM_BOT_TOKEN']
+        tg_chat_id = os.environ['TELEGRAM_CHAT_ID']
+        sending_period = os.environ.get('SENDING_PERIOD', '86400')
+        send_images_on_tgchat(photos_path, tg_bot_token,
+                              tg_chat_id, sending_period)
         print('Фотографии отправлены в канал')
     except requests.exceptions.HTTPError:
         print('Проверьте введенную вами ссылку')
