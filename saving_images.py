@@ -20,24 +20,6 @@ def is_image_appropriate(file_path):
     return is_file and is_image and is_image_size_appropriate
 
 
-def download_epic_images(nasa_token, images, folder_with_images):
-    params = {
-        'api_key':  nasa_token,
-    }
-    for image in images:
-        image_name = image['image_name']
-        image_date = image['image_date']
-        image_url = ('https://api.nasa.gov/EPIC/archive/natural/'
-                     f'{image_date}/png/{image_name}.png')
-        response = requests.get(image_url,
-                                params=params)
-        response.raise_for_status()
-        Path(folder_with_images).mkdir(parents=True, exist_ok=True)
-        image = f'{folder_with_images}/{image_name}.png'
-        with open(image, 'wb') as file:
-            file.write(response.content)
-
-
 def send_images_on_tgchat(images_path, bot_token, chat_id, sending_period):
     bot = telegram.Bot(token=bot_token)
     bot.get_updates()
@@ -60,48 +42,32 @@ def parse_image_info(image_date, image_name):
     return image_info
 
 
-def get_nasa_images_info(token):
+def get_nasa_images_urls(token):
     nasa_url = 'https://api.nasa.gov/EPIC/api/natural/images'
     params = {
         'api_key': token,
     }
     response = requests.get(nasa_url, params)
-    images = []
+    images_urls = []
     for image in response.json()[:2]:
         image_info = parse_image_info(image['date'], image['image'])
-        images.append(image_info)
-    return images
+        image_name = image_info['image_name']
+        image_date = image_info['image_date']
+        image_url = ('https://api.nasa.gov/EPIC/archive/natural/'
+                     f'{image_date}/png/{image_name}.png')
+        images_urls.append(image_url)
+    return images_urls
 
 
-def download_spacex_images(links, images_path, images_amount):
-    Path(images_path).mkdir(parents=True, exist_ok=True)
-    for num, link in enumerate(links[:images_amount]):
-        response = requests.get(link)
-        response.raise_for_status()
-        image_path = f'{images_path}/spacex{num}.jpg'
-        with open(image_path, 'wb') as file:
-            file.write(response.content)
-
-
-def fetch_spacex_last_launch():
+def fetch_spacex_last_launch_links(images_amount):
     response = requests.get('https://api.spacexdata.com/v3/launches/past')
     response.raise_for_status()
-    images = [link for flight in response.json()
-              for link in flight['links']['flickr_images']]
-    return images
+    images_links = [link for flight in response.json()
+                    for link in flight['links']['flickr_images']]
+    return images_links[:images_amount]
 
 
-def save_nasa_apod(images_url, image_path):
-    Path(image_path).mkdir(parents=True, exist_ok=True)
-    for num, image_url in enumerate(images_url):
-        response = requests.get(image_url)
-        extension = get_extension(image_url)
-        image = f'{image_path}/apod{num}{extension}'
-        with open(image, 'wb') as file:
-            file.write(response.content)
-
-
-def get_apod_images(token, amount):
+def get_apod_images_urls(token, amount):
     url = 'https://api.nasa.gov/planetary/apod'
     params = {
         'api_key': token,
@@ -109,8 +75,8 @@ def get_apod_images(token, amount):
     }
     response = requests.get(url, params=params)
     response.raise_for_status()
-    images = [flight['hdurl'] for flight in response.json() if flight]
-    return images
+    images_urls = [flight['hdurl'] for flight in response.json() if flight]
+    return images_urls
 
 
 def get_extension(url):
@@ -119,20 +85,33 @@ def get_extension(url):
     return file_extension
 
 
+def downloading_image(image_url, image_path, image_name, token):
+    params = {
+        'api_key': token,
+    }
+    extension = get_extension(image_url)
+    full_image_path = f'{image_path}/image{image_name}{extension}'
+    response = requests.get(image_url,
+                            params=params)
+    with open(full_image_path, 'wb') as file:
+        file.write(response.content)
+
+
 def main():
     photos_path = 'space_photos'
+    Path(photos_path).mkdir(parents=True, exist_ok=True)
     load_dotenv()
     nasa_token = os.environ['NASA_TOKEN']
     nasa_images_amount = int(os.environ.get('NASA_IMAGES_AMOUNT', '3'))
     try:
-        nasa_images = get_apod_images(nasa_token, nasa_images_amount)
-        save_nasa_apod(nasa_images, photos_path)
-        spacex_last_launch_photos = fetch_spacex_last_launch()
+        images_urls = []
         spacex_images_amount = int(os.environ.get('SPACEX_IMAGES_AMOUNT', '2'))
-        download_spacex_images(spacex_last_launch_photos,
-                               photos_path, spacex_images_amount)
-        images = get_nasa_images_info(nasa_token)
-        download_epic_images(nasa_token, images, photos_path)
+        images_urls += fetch_spacex_last_launch_links(spacex_images_amount)
+        images_urls += get_apod_images_urls(nasa_token, nasa_images_amount)
+        images_urls += get_nasa_images_urls(nasa_token)
+        for url in images_urls:
+            downloading_image(url, photos_path,
+                              images_urls.index(url), nasa_token)
         tg_bot_token = os.environ['TELEGRAM_BOT_TOKEN']
         tg_chat_id = os.environ['TELEGRAM_CHAT_ID']
         sending_period = os.environ.get('SENDING_PERIOD', '86400')
