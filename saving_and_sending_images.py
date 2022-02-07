@@ -28,12 +28,13 @@ def send_images_to_tgchat(images_path, bot_token, chat_id, sending_period):
             images_path,
             image,
         )
-        if is_image_appropriate(full_image_path):
-            with open(full_image_path, 'rb') as image:
-                bot.send_photo(
-                    chat_id=chat_id,
-                    photo=image,
-                )
+        if not is_image_appropriate(full_image_path):
+            continue
+        with open(full_image_path, 'rb') as image:
+            bot.send_photo(
+                chat_id=chat_id,
+                photo=image,
+            )
             time.sleep(int(sending_period))
 
 
@@ -100,24 +101,34 @@ def get_extension(url):
     return file_extension
 
 
-def downloading_image(image_url, image_path, image_name, token):
+def download_image(image_url, image_path, image_name, params=None):
     extension = get_extension(image_url)
     full_image_path = f'{image_path}/image{image_name}{extension}'
-    if token:
-        params = {
-            'api_key': token,
-        }
-        response = requests.get(
-            image_url,
-            params=params,
-        )
-    else:
-        response = requests.get(image_url)
+    response = requests.get(
+        image_url,
+        params=params,
+    )
     with open(full_image_path, 'wb') as file:
         file.write(response.content)
 
 
+def get_full_image_info(urls, token, images_path):
+    full_images_info = []
+    for url_num, url in enumerate(urls):
+        image_info = {
+            'url': url,
+            'image_path': images_path,
+            'image_name': url_num,
+        }
+        if 'nasa' in url:
+            params = {'api_key': token}
+            image_info['params'] = params
+        full_images_info.append(image_info)
+    return full_images_info
+
+
 def main():
+    load_dotenv()
     photos_path = os.environ.get(
         'IMAGES_PATH',
         'space_photos',
@@ -126,7 +137,6 @@ def main():
         parents=True,
         exist_ok=True,
     )
-    load_dotenv()
     nasa_token = os.environ['NASA_TOKEN']
     apod_images_amount = int(os.environ.get(
         'APOD_IMAGES_AMOUNT',
@@ -140,8 +150,8 @@ def main():
         ))
         images_urls += fetch_spacex_last_launch_links(spacex_images_amount)
         images_urls += get_apod_images_urls(
-            nasa_token,
-            apod_images_amount,
+            token=nasa_token,
+            amount=apod_images_amount,
         )
         epic_images_amount = int(os.environ.get(
             'EPIC_IMAGES_AMOUNT',
@@ -149,17 +159,19 @@ def main():
         ))
         images_urls += get_epic_images_urls(
             token=nasa_token,
-            number_of_image=epic_images_amount
-            )
-        for url_num, url in enumerate(images_urls):
-            token = None
-            if 'nasa' in url:
-                token = nasa_token
-            downloading_image(
-                image_url=url,
-                image_path=photos_path,
-                image_name=url_num,
-                token=token
+            number_of_image=epic_images_amount,
+        )
+        all_images_with_info = get_full_image_info(
+            urls=images_urls,
+            token=nasa_token,
+            images_path=photos_path,
+        )
+        for image_info in all_images_with_info:
+            download_image(
+                image_url=image_info['url'],
+                image_path=image_info['image_path'],
+                image_name=image_info['image_name'],
+                params=image_info.get('params'),
             )
         tg_bot_token = os.environ['TELEGRAM_BOT_TOKEN']
         tg_chat_id = os.environ['TELEGRAM_CHAT_ID']
@@ -168,10 +180,10 @@ def main():
             '86400',
         )
         send_images_to_tgchat(
-            photos_path,
-            tg_bot_token,
-            tg_chat_id,
-            sending_period,
+            images_path=photos_path,
+            bot_token=tg_bot_token,
+            chat_id=tg_chat_id,
+            sending_period=sending_period,
         )
         print('Фотографии отправлены в канал')
     except requests.exceptions.HTTPError:
