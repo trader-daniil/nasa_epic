@@ -159,6 +159,9 @@ def main():
             images_amount=spacex_images_amount,
             images_path=photos_path,
         )
+    except requests.exceptions.HTTPError as error:
+        print(error)
+    try:
         epic_images_amount = int(os.environ.get(
             'EPIC_IMAGES_AMOUNT',
             '3',
@@ -177,6 +180,9 @@ def main():
             amount=apod_images_amount,
             images_path=photos_path,
         )
+    except requests.exceptions.HTTPError:
+        print('Проверьте токен авторизации Nasa')
+    try:
         tg_bot_token = os.environ['TELEGRAM_BOT_TOKEN']
         tg_chat_id = os.environ['TELEGRAM_CHAT_ID']
         sending_period = os.environ.get(
@@ -191,7 +197,7 @@ def main():
         )
         print('Фотографии отправлены')
     except requests.exceptions.HTTPError:
-        print(requests.exceptions.HTTPError)
+        print('Проверьте токен Telegram')
 
 
 if __name__ == '__main__':
